@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+    environment {
+        scannerHome = tool 'mysonar';
+    }
+    stages{
+        stage("Code") {
+            steps {
+                git 'https://github.com/maneeshpallapu07/ltibbhackathon.git'
+            }
+        }
+        stage("CQA") {
+            steps {
+         withSonarQubeEnv('mysonar') {
+                   sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=MyProject"
+                }
+            }
+        }
+        stage("QualityGate") {
+            steps {
+               waitForQualityGate abortPipeline: false, credentialsId: 'Sonar_Id'
+            }
+        }
+        stage("Images") {
+            steps {
+                sh 'docker build -t dbimage database'
+                sh 'docker build -t appimage .'
+            }
+        }
+        stage("Images tag"){
+            steps {
+                sh 'docker tag dbimage maneeshdock/bloodapp:dbimage'
+                sh 'docker tag appimage maneeshdock/bloodapp:appimage'
+            }
+        }
+        stage("Push Image") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker') {
+                  sh 'docker push maneeshdock/bloodapp:dbimage'
+                  sh 'docker push maneeshdock/bloodapp:appimage'
+                         }
+                }
+            }
+        }
+        stage("Deploy"){
+            steps {
+                sh 'docker run -d --name mysqldb -p 3306:3306 maneeshdock/bloodapp:dbimage'
+                sh 'docker run -d --name appcont -p 1111:80 --link mysqldb:mysqlcol maneeshdock/bloodapp:appimage'
+            }
+        }
+         
+    }
+}
